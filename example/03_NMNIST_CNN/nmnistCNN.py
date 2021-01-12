@@ -27,10 +27,10 @@ class nmnistDataset(Dataset):
         
         inputSpikes = snn.io.read2Dspikes(
                         self.path + str(inputIndex.item()) + '.bs2'
-                        ).toSpikeTensor(torch.zeros((2,34,34,self.nTimeBins)),
+                        ).toSpikeTensor(torch.zeros((2, 34, 34, self.nTimeBins)),
                         samplingTime=self.samplingTime)
         desiredClass = torch.zeros((10, 1, 1, 1))
-        desiredClass[classLabel,...] = 1
+        desiredClass[classLabel, ...] = 1
         return inputSpikes, desiredClass, classLabel
     
     def __len__(self):
@@ -52,12 +52,12 @@ class Network(torch.nn.Module):
         self.fc1   = slayer.dense((8, 8, 64), 10)
 
     def forward(self, spikeInput):
-        spikeLayer1 = self.slayer.spike(self.conv1(self.slayer.psp(spikeInput ))) # 32, 32, 16
+        spikeLayer1 = self.slayer.spike(self.conv1(self.slayer.psp(spikeInput)))  # 32, 32, 16
         spikeLayer2 = self.slayer.spike(self.pool1(self.slayer.psp(spikeLayer1))) # 16, 16, 16
         spikeLayer3 = self.slayer.spike(self.conv2(self.slayer.psp(spikeLayer2))) # 16, 16, 32
-        spikeLayer4 = self.slayer.spike(self.pool2(self.slayer.psp(spikeLayer3))) #  8,  8, 32
-        spikeLayer5 = self.slayer.spike(self.conv3(self.slayer.psp(spikeLayer4))) #  8,  8, 64
-        spikeOut    = self.slayer.spike(self.fc1  (self.slayer.psp(spikeLayer5))) #  10
+        spikeLayer4 = self.slayer.spike(self.pool2(self.slayer.psp(spikeLayer3))) # 8, 8, 32
+        spikeLayer5 = self.slayer.spike(self.conv3(self.slayer.psp(spikeLayer4))) # 8, 8, 64
+        spikeOut    = self.slayer.spike(self.fc1(self.slayer.psp(spikeLayer5)))   # 10
 
         return spikeOut
 
@@ -86,17 +86,17 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(net.parameters(), lr = 0.01, amsgrad = True)
 
     # Dataset and dataLoader instances.
-    trainingSet = nmnistDataset(datasetPath =netParams['training']['path']['in'], 
-                                sampleFile  =netParams['training']['path']['train'],
-                                samplingTime=netParams['simulation']['Ts'],
-                                sampleLength=netParams['simulation']['tSample'])
+    trainingSet = nmnistDataset(datasetPath  = netParams['training']['path']['in'], 
+                                sampleFile   = netParams['training']['path']['train'],
+                                samplingTime = netParams['simulation']['Ts'],
+                                sampleLength = netParams['simulation']['tSample'])
     trainLoader = DataLoader(dataset=trainingSet, batch_size=12, shuffle=False, num_workers=4)
 
-    testingSet = nmnistDataset(datasetPath  =netParams['training']['path']['in'], 
-                                sampleFile  =netParams['training']['path']['test'],
-                                samplingTime=netParams['simulation']['Ts'],
-                                sampleLength=netParams['simulation']['tSample'])
-    testLoader = DataLoader(dataset=testingSet, batch_size=12, shuffle=False, num_workers=4)
+    testingSet  = nmnistDataset(datasetPath  = netParams['training']['path']['in'], 
+                                sampleFile   = netParams['training']['path']['test'],
+                                samplingTime = netParams['simulation']['Ts'],
+                                sampleLength = netParams['simulation']['tSample'])
+    testLoader  = DataLoader(dataset=testingSet, batch_size=12, shuffle=False, num_workers=4)
 
     # Learning stats instance.
     stats = learningStats()
@@ -120,7 +120,7 @@ if __name__ == '__main__':
             output = net.forward(input)
             
             # Gather the training stats.
-            stats.training.correctSamples += torch.sum( snn.predict.getClass(output) == label ).data.item()
+            stats.training.correctSamples += torch.sum(snn.predict.getClass(output) == label).data.item()
             stats.training.numSamples     += len(label)
             
             # Calculate loss.
@@ -149,7 +149,7 @@ if __name__ == '__main__':
             
             output = net.forward(input)
 
-            stats.testing.correctSamples += torch.sum( snn.predict.getClass(output) == label ).data.item()
+            stats.testing.correctSamples += torch.sum(snn.predict.getClass(output) == label).data.item()
             stats.testing.numSamples     += len(label)
 
             loss = error.numSpikes(output, target)

@@ -4,46 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import yaml
-# import slayer_cuda
+
 import slayerCuda
-# import matplotlib.pyplot as plt
 
-# # Consider dictionary for easier iteration and better scalability
-# class yamlParams(object):
-#   '''
-#   This class reads yaml parameter file and allows dictionary like access to the members.
-    
-#   Usage:
-
-#   .. code-block:: python
-        
-#       import slayerSNN as snn
-#       netParams = snn.params('path_to_yaml_file') # OR
-#       netParams = slayer.yamlParams('path_to_yaml_file')
-
-#       netParams['training']['learning']['etaW'] = 0.01
-#       print('Simulation step size        ', netParams['simulation']['Ts'])
-#       print('Spiking neuron time constant', netParams['neuron']['tauSr'])
-#       print('Spiking neuron threshold    ', netParams['neuron']['theta'])
-
-#       netParams.save('filename.yaml')
-#   '''
-#   def __init__(self, parameter_file_path):
-#       with open(parameter_file_path, 'r') as param_file:
-#           self.parameters = yaml.safe_load(param_file)
-
-#   # Allow dictionary like access
-#   def __getitem__(self, key):
-#       return self.parameters[key]
-
-#   def __setitem__(self, key, value):
-#       self.parameters[key] = value
-
-#   def save(self, filename):
-#       with open(filename, 'w') as f:
-#           yaml.dump(self.parameters, f)
-
-# class spikeLayer():
 class spikeLayer(torch.nn.Module):
     '''
     This class defines the main engine of SLAYER.
@@ -90,23 +53,20 @@ class spikeLayer(torch.nn.Module):
         self.simulation = simulationDesc
         self.fullRefKernel = fullRefKernel
         
-        # self.srmKernel = self.calculateSrmKernel()
-        # self.refKernel = self.calculateRefKernel()
         self.register_buffer('srmKernel', self.calculateSrmKernel())
         self.register_buffer('refKernel', self.calculateRefKernel())
         
     def calculateSrmKernel(self):
-        srmKernel = self._calculateAlphaKernel(self.neuron['tauSr'])
+        srmKernel = self._calculateAlphaKernel(self.neuron['tauSr']) # tau=10.0
         # TODO implement for different types of kernels
         return torch.FloatTensor(srmKernel)
-        # return torch.FloatTensor( self._zeroPadAndFlip(srmKernel)) # to be removed later when custom cuda code is implemented
         
     def calculateRefKernel(self):
         if self.fullRefKernel:
-            refKernel = self._calculateAlphaKernel(tau=self.neuron['tauRef'], mult = -self.neuron['scaleRef'] * self.neuron['theta'], EPSILON = 0.0001)
+            refKernel = self._calculateAlphaKernel(tau=self.neuron['tauRef'], mult=-self.neuron['scaleRef'] * self.neuron['theta'], EPSILON=0.0001) # tau=1.0, mult=-20
             # This gives the high precision refractory kernel as MATLAB implementation, however, it is expensive
         else:
-            refKernel = self._calculateAlphaKernel(tau=self.neuron['tauRef'], mult = -self.neuron['scaleRef'] * self.neuron['theta'])
+            refKernel = self._calculateAlphaKernel(tau=self.neuron['tauRef'], mult=-self.neuron['scaleRef'] * self.neuron['theta']) # tau=1.0, mult=-20
         
         # TODO implement for different types of kernels
         return torch.FloatTensor(refKernel)
@@ -114,7 +74,6 @@ class spikeLayer(torch.nn.Module):
     def _calculateAlphaKernel(self, tau, mult = 1, EPSILON = 0.01):
         # could be made faster... NOT A PRIORITY NOW
         eps = []
-        # tauSr = self.neuron['tauSr']
         for t in np.arange(0, self.simulation['tSample'], self.simulation['Ts']):
             epsVal = mult * t / tau * math.exp(1 - t / tau)
             if abs(epsVal) < EPSILON and t > tau:
@@ -123,9 +82,10 @@ class spikeLayer(torch.nn.Module):
         return eps
     
     def _zeroPadAndFlip(self, kernel):
-        if (len(kernel)%2) == 0: kernel.append(0)
+        if (len(kernel) % 2) == 0: 
+            kernel.append(0)
         prependedZeros = np.zeros((len(kernel) - 1))
-        return np.flip( np.concatenate( (prependedZeros, kernel) ) ).tolist()
+        return np.flip(np.concatenate((prependedZeros, kernel))).tolist()
         
     def psp(self, spike):
         '''
@@ -179,7 +139,7 @@ class spikeLayer(torch.nn.Module):
     def replicateInTime(self, input, mode='nearest'):
         Ns = int(self.simulation['tSample'] / self.simulation['Ts'])
         N, C, H, W = input.shape
-        # output = F.pad(input.reshape(N, C, H, W, 1), pad=(Ns-1, 0, 0, 0, 0, 0), mode='replicate')
+
         if mode == 'nearest':
             output = F.interpolate(input.reshape(N, C, H, W, 1), size=(H, W, Ns), mode='nearest')
         return output
@@ -371,9 +331,6 @@ class spikeLayer(torch.nn.Module):
         >>> delay.delay.data.clamp_(0)  
         '''
         return _delayLayer(inputSize, self.simulation['Ts'])
-    
-    # def applySpikeFunction(self, membranePotential):
-    #   return _spikeFunction.apply(membranePotential, self.refKernel, self.neuron, self.simulation['Ts'])
 
     def spike(self, membranePotential):
         '''
@@ -392,8 +349,6 @@ class spikeLayer(torch.nn.Module):
 
 class _denseLayer(nn.Conv3d):
     def __init__(self, inFeatures, outFeatures, weightScale=1, preHookFx=None):
-        '''
-        '''
         # extract information for kernel and inChannels
         if type(inFeatures) == int:
             kernel = (1, 1, 1)
@@ -406,27 +361,21 @@ class _denseLayer(nn.Conv3d):
             inChannels = inFeatures[2]
         else:
             raise Exception('inFeatures should not be more than 3 dimension. It was: {}'.format(inFeatures.shape))
-        # print('Kernel Dimension:', kernel)
-        # print('Input Channels  :', inChannels)
         
         if type(outFeatures) == int:
             outChannels = outFeatures
         else:
             raise Exception('outFeatures should not be more than 1 dimesnion. It was: {}'.format(outFeatures.shape))
-        # print('Output Channels :', outChannels)
         
         super(_denseLayer, self).__init__(inChannels, outChannels, kernel, bias=False)
 
         if weightScale != 1:    
             self.weight = torch.nn.Parameter(weightScale * self.weight) # scale the weight if needed
-            # print('In dense, using weightScale of', weightScale)
 
         self.preHookFx = preHookFx
 
     
     def forward(self, input):
-        '''
-        '''
         if self.preHookFx is None:
             return F.conv3d(input, 
                             self.weight, self.bias, 
@@ -437,8 +386,6 @@ class _denseLayer(nn.Conv3d):
                             self.stride, self.padding, self.dilation, self.groups)
 
 class _convLayer(nn.Conv3d):
-    '''
-    '''
     def __init__(self, inFeatures, outFeatures, kernelSize, stride=1, padding=0, dilation=1, groups=1, weightScale=1, preHookFx=None):
         inChannels = inFeatures
         outChannels = outFeatures
@@ -475,28 +422,14 @@ class _convLayer(nn.Conv3d):
         else:
             raise Exception('dilation can be either int or tuple of size 2. It was: {}'.format(dilation.shape))
 
-        # groups
-        # no need to check for groups. It can only be int
-
-        # print('inChannels :', inChannels)
-        # print('outChannels:', outChannels)
-        # print('kernel     :', kernel, kernelSize)
-        # print('stride     :', stride)
-        # print('padding    :', padding)
-        # print('dilation   :', dilation)
-        # print('groups     :', groups)
-
         super(_convLayer, self).__init__(inChannels, outChannels, kernel, stride, padding, dilation, groups, bias=False)
 
         if weightScale != 1:    
             self.weight = torch.nn.Parameter(weightScale * self.weight) # scale the weight if needed
-            # print('In conv, using weightScale of', weightScale)
 
         self.preHookFx = preHookFx
 
     def forward(self, input):
-        '''
-        '''
         if self.preHookFx is None:
             return F.conv3d(input, 
                             self.weight, self.bias, 
@@ -507,8 +440,6 @@ class _convLayer(nn.Conv3d):
                             self.stride, self.padding, self.dilation, self.groups)
 
 class _poolLayer(nn.Conv3d):
-    '''
-    '''
     def __init__(self, theta, kernelSize, stride=None, padding=0, dilation=1, preHookFx=None):
         # kernel
         if type(kernelSize) == int:
@@ -543,33 +474,20 @@ class _poolLayer(nn.Conv3d):
             dilation = (dilation[0], dilation[1], 1)
         else:
             raise Exception('dilation can be either int or tuple of size 2. It was: {}'.format(dilation.shape))
-
-        # print('theta      :', theta)
-        # print('kernel     :', kernel, kernelSize)
-        # print('stride     :', stride)
-        # print('padding    :', padding)
-        # print('dilation   :', dilation)
         
         super(_poolLayer, self).__init__(1, 1, kernel, stride, padding, dilation, bias=False)   
 
         # set the weights to 1.1*theta and requires_grad = False
         self.weight = torch.nn.Parameter(torch.FloatTensor(1.1 * theta * np.ones((self.weight.shape))).to(self.weight.device), requires_grad = False)
-        # print('In pool layer, weight =', self.weight.cpu().data.numpy().flatten(), theta)
 
         self.preHookFx = preHookFx
 
 
     def forward(self, input):
-        '''
-        '''
         device = input.device
         dtype  = input.dtype
         
         # add necessary padding for odd spatial dimension
-        # if input.shape[2]%2 != 0:
-            # input = torch.cat((input, torch.zeros((input.shape[0], input.shape[1], 1, input.shape[3], input.shape[4]), dtype=dtype).to(device)), 2)
-        # if input.shape[3]%2 != 0:
-            # input = torch.cat((input, torch.zeros((input.shape[0], input.shape[1], input.shape[2], 1, input.shape[4]), dtype=dtype).to(device)), 3)
         if input.shape[2]%self.weight.shape[2] != 0:
             input = torch.cat((input, torch.zeros((input.shape[0], input.shape[1], input.shape[2]%self.weight.shape[2], input.shape[3], input.shape[4]), dtype=dtype).to(device)), 2)
         if input.shape[3]%self.weight.shape[3] != 0:
@@ -585,12 +503,10 @@ class _poolLayer(nn.Conv3d):
             result = F.conv3d(input.reshape((dataShape[0], 1, dataShape[1] * dataShape[2], dataShape[3], dataShape[4])), 
                           self.preHooFx(self.weight), self.bias, 
                           self.stride, self.padding, self.dilation)
-        # print(result.shape)
+
         return result.reshape((result.shape[0], dataShape[1], -1, result.shape[3], result.shape[4]))
 
 class _convTransposeLayer(nn.ConvTranspose3d):
-    '''
-    '''
     def __init__(self, inFeatures, outFeatures, kernelSize, stride=1, padding=0, dilation=1, groups=1, weightScale=1, preHookFx=None):
         inChannels = inFeatures
         outChannels = outFeatures
@@ -638,8 +554,6 @@ class _convTransposeLayer(nn.ConvTranspose3d):
         self.preHookFx = preHookFx
 
     def forward(self, input):
-        '''
-        '''
         if self.preHookFx is None:
             return F.conv_transpose3d(
                 input,
@@ -654,8 +568,6 @@ class _convTransposeLayer(nn.ConvTranspose3d):
             )
 
 class _unpoolLayer(nn.ConvTranspose3d):
-    '''
-    '''
     def __init__(self, theta, kernelSize, stride=None, padding=0, dilation=1, preHookFx=None):
         # kernel
         if type(kernelSize) == int:
@@ -698,35 +610,6 @@ class _unpoolLayer(nn.ConvTranspose3d):
         self.preHookFx = preHookFx
 
     def forward(self, input):
-        '''
-        '''
-        # device = input.device
-        # dtype  = input.dtype
-        # # add necessary padding for odd spatial dimension
-        # This is not needed as unpool multiplies the spatial dimension, hence it is always fine
-        # if input.shape[2]%self.weight.shape[2] != 0:
-        #     input = torch.cat(
-        #         (
-        #             input, 
-        #             torch.zeros(
-        #                 (input.shape[0], input.shape[1], input.shape[2]%self.weight.shape[2], input.shape[3], input.shape[4]),
-        #                 dtype=dtype
-        #             ).to(device)
-        #         ),
-        #         dim=2,
-        #     )
-        # if input.shape[3]%self.weight.shape[3] != 0:
-        #     input = torch.cat(
-        #         (
-        #             input,
-        #             torch.zeros(
-        #                 (input.shape[0], input.shape[1], input.shape[2], input.shape[3]%self.weight.shape[3], input.shape[4]),
-        #                 dtype=dtype
-        #             ),
-        #             dim=3,
-        #         )
-        #     )
-
         dataShape = input.shape
 
         if self.preHookFx is None:
@@ -745,21 +628,14 @@ class _unpoolLayer(nn.ConvTranspose3d):
         return result.reshape((result.shape[0], dataShape[1], -1, result.shape[3], result.shape[4]))
 
 class _dropoutLayer(nn.Dropout3d):
-    '''
-    '''
-    # def __init__(self, p=0.5, inplace=False):
-    #   super(_dropoutLayer, self)(p, inplace)
 
-    '''
-    '''
     def forward(self, input):
         inputShape = input.shape
         return F.dropout3d(input.reshape((inputShape[0], -1, 1, 1, inputShape[-1])),
                            self.p, self.training, self.inplace).reshape(inputShape)
 
 class _pspLayer(nn.Conv3d):
-    '''
-    '''
+
     def __init__(self, filter, Ts):
         inChannels  = 1
         outChannels = 1
@@ -769,10 +645,6 @@ class _pspLayer(nn.Conv3d):
 
         super(_pspLayer, self).__init__(inChannels, outChannels, kernel, bias=False) 
 
-        # print(filter)
-        # print(np.flip(filter.cpu().data.numpy()).reshape(self.weight.shape)) 
-        # print(torch.FloatTensor(np.flip(filter.cpu().data.numpy()).copy()))
-
         flippedFilter = torch.FloatTensor(np.flip(filter.cpu().data.numpy()).copy()).reshape(self.weight.shape)
 
         self.weight = torch.nn.Parameter(flippedFilter.to(self.weight.device), requires_grad = True)
@@ -780,19 +652,13 @@ class _pspLayer(nn.Conv3d):
         self.pad = torch.nn.ConstantPad3d(padding=(torch.numel(filter)-1, 0, 0, 0, 0, 0), value=0)
 
     def forward(self, input):
-        '''
-        '''
         inShape = input.shape
         inPadded = self.pad(input.reshape((inShape[0], 1, 1, -1, inShape[-1])))
-        # print((inShape[0], 1, 1, -1, inShape[-1]))
-        # print(input.reshape((inShape[0], 1, 1, -1, inShape[-1])).shape)
-        # print(inPadded.shape)
         output = F.conv3d(inPadded, self.weight) * self.Ts
         return output.reshape(inShape)
 
 class _pspFilter(nn.Conv3d):
-    '''
-    '''
+
     def __init__(self, nFilter, filterLength, Ts, filterScale=1):
         inChannels  = 1
         outChannels = nFilter
@@ -807,74 +673,38 @@ class _pspFilter(nn.Conv3d):
             self.weight.data *= filterScale
 
     def forward(self, input):
-        '''
-        '''
         N, C, H, W, Ns = input.shape
         inPadded = self.pad(input.reshape((N, 1, 1, -1, Ns)))
         output = F.conv3d(inPadded, self.weight) * self.Ts
         return output.reshape((N, -1, H, W, Ns))
 
 class _spikeFunction(torch.autograd.Function):
-    '''
-    '''
+
     @staticmethod
     def forward(ctx, membranePotential, refractoryResponse, neuron, Ts):
-        '''
-        '''
         device = membranePotential.device
         dtype  = membranePotential.dtype
-        threshold      = neuron['theta']
+        threshold = neuron['theta']
         oldDevice = torch.cuda.current_device()
 
-        # if device != oldDevice: torch.cuda.set_device(device)
-        # torch.cuda.device(3)
-
-        # spikeTensor = torch.empty_like(membranePotential)
-
-        # print('membranePotential  :', membranePotential .device)
-        # print('spikeTensor        :', spikeTensor       .device)
-        # print('refractoryResponse :', refractoryResponse.device)
-            
-        # (membranePotential, spikes) = slayer_cuda.get_spikes_cuda(membranePotential,
-        #                                                         torch.empty_like(membranePotential),  # tensor for spikes
-        #                                                         refractoryResponse,
-        #                                                         threshold,
-        #                                                         Ts)
         spikes = slayerCuda.getSpikes(membranePotential.contiguous(), refractoryResponse, threshold, Ts)
         
-        pdfScale        = torch.autograd.Variable(torch.tensor(neuron['scaleRho']                 , device=device, dtype=dtype), requires_grad=False)
-        # pdfTimeConstant = torch.autograd.Variable(torch.tensor(neuron['tauRho']                   , device=device, dtype=dtype), requires_grad=False) # needs to be scaled by theta
+        pdfScale        = torch.autograd.Variable(torch.tensor(neuron['scaleRho']                 , device=device, dtype=dtype), requires_grad=False) # needs to be scaled by theta
         pdfTimeConstant = torch.autograd.Variable(torch.tensor(neuron['tauRho'] * neuron['theta'] , device=device, dtype=dtype), requires_grad=False) # needs to be scaled by theta
         threshold       = torch.autograd.Variable(torch.tensor(neuron['theta']                    , device=device, dtype=dtype), requires_grad=False)
         ctx.save_for_backward(membranePotential, threshold, pdfTimeConstant, pdfScale)
-        # torch.cuda.synchronize()
-        
-        # if device != oldDevice: torch.cuda.set_device(oldDevice)
-        # torch.cuda.device(oldDevice)
         
         return spikes
         
     @staticmethod
     def backward(ctx, gradOutput):
-        '''
-        '''
         (membranePotential, threshold, pdfTimeConstant, pdfScale) = ctx.saved_tensors
-        spikePdf = pdfScale / pdfTimeConstant * torch.exp( -torch.abs(membranePotential - threshold) / pdfTimeConstant)
+        spikePdf = pdfScale / pdfTimeConstant * torch.exp(-torch.abs(membranePotential - threshold) / pdfTimeConstant)
 
         # return gradOutput, None, None, None # This seems to work better!
         return gradOutput * spikePdf, None, None, None
-        # plt.figure()
-        # plt.plot(gradOutput[0,5,0,0,:].cpu().data.numpy())
-        # print   (gradOutput[0,0,0,0,:].cpu().data.numpy())
-        # plt.plot(membranePotential[0,0,0,0,:].cpu().data.numpy())
-        # plt.plot(spikePdf         [0,0,0,0,:].cpu().data.numpy())
-        # print   (spikePdf         [0,0,0,0,:].cpu().data.numpy())
-        # plt.show()
-        # return gradOutput * spikePdf, None, None, None
 
 class _pspFunction(torch.autograd.Function):
-    '''
-    '''
     @staticmethod
     def forward(ctx, spike, filter, Ts):
         device = spike.device
@@ -886,8 +716,6 @@ class _pspFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gradOutput):
-        '''
-        '''
         (filter, Ts) = ctx.saved_tensors
         gradInput = slayerCuda.corr(gradOutput.contiguous(), filter, Ts)
         if filter.requires_grad is False:
@@ -899,8 +727,6 @@ class _pspFunction(torch.autograd.Function):
         return gradInput, gradFilter, None
 
 class _delayLayer(nn.Module):
-    '''
-    '''
     def __init__(self, inputSize, Ts):
         super(_delayLayer, self).__init__()
 
@@ -916,8 +742,6 @@ class _delayLayer(nn.Module):
             raise Exception('inputSize can only be 1 or 2 dimension. It was: {}'.format(inputSize.shape))
 
         self.delay = torch.nn.Parameter(torch.rand((inputChannels, inputHeight, inputWidth)), requires_grad=True)
-        # self.delay = torch.nn.Parameter(torch.empty((inputChannels, inputHeight, inputWidth)), requires_grad=True)
-        # print('delay:', torch.empty((inputChannels, inputHeight, inputWidth)))
         self.Ts = Ts
 
     def forward(self, input):
@@ -928,12 +752,8 @@ class _delayLayer(nn.Module):
             return _delayFunction.apply(input, self.delay, self.Ts) #different delay per neuron
 
 class _delayFunction(torch.autograd.Function):
-    '''
-    '''
     @staticmethod
     def forward(ctx, input, delay, Ts):
-        '''
-        '''
         device = input.device
         dtype  = input.dtype
         output = slayerCuda.shift(input.contiguous(), delay.data, Ts)
@@ -943,8 +763,6 @@ class _delayFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gradOutput):
-        '''
-        '''
         # autograd tested and verified
         (output, delay, Ts) = ctx.saved_tensors
         diffFilter = torch.tensor([-1, 1], dtype=gradOutput.dtype).to(gradOutput.device) / Ts
@@ -957,12 +775,8 @@ class _delayFunction(torch.autograd.Function):
         return slayerCuda.shift(gradOutput.contiguous(), -delay, Ts), gradDelay, None
 
 class _delayFunctionNoGradient(torch.autograd.Function):
-    '''
-    '''
     @staticmethod
     def forward(ctx, input, delay, Ts=1):
-        '''
-        '''
         device = input.device
         dtype  = input.dtype
         output = slayerCuda.shift(input.contiguous(), delay, Ts)
@@ -973,7 +787,5 @@ class _delayFunctionNoGradient(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gradOutput):
-        '''
-        '''
         (delay, Ts) = ctx.saved_tensors
         return slayerCuda.shift(gradOutput.contiguous(), -delay, Ts), None, None

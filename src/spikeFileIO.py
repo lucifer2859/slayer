@@ -32,7 +32,8 @@ class event():
 		if not issubclass(self.p.dtype.type, np.integer): self.p = self.p.astype('int')
 		
 		if self.dim == 2:	
-			if not issubclass(self.y.dtype.type, np.integer): self.y = self.y.astype('int')
+			if not issubclass(self.y.dtype.type, np.integer): 
+				self.y = self.y.astype('int')
 		
 		self.p -= self.p.min()
 
@@ -51,15 +52,15 @@ class event():
 		>>> spike = TD.toSpikeArray()
 		'''
 		if self.dim == 1:
-			if dim is None: dim = ( np.round(max(self.p)+1).astype(int),
-									np.round(max(self.x)+1).astype(int), 
-									np.round(max(self.t)/samplingTime+1).astype(int) )
+			if dim is None: dim = ( np.round(max(self.p) + 1).astype(int),
+									np.round(max(self.x) + 1).astype(int), 
+									np.round(max(self.t) / samplingTime + 1).astype(int) )
 			frame = np.zeros((dim[0], 1, dim[1], dim[2]))
 		elif self.dim == 2:
-			if dim is None: dim = ( np.round(max(self.p)+1).astype(int), 
-									np.round(max(self.y)+1).astype(int), 
-									np.round(max(self.x)+1).astype(int), 
-									np.round(max(self.t)/samplingTime+1).astype(int) )
+			if dim is None: dim = ( np.round(max(self.p) + 1).astype(int), 
+									np.round(max(self.y) + 1).astype(int), 
+									np.round(max(self.x) + 1).astype(int), 
+									np.round(max(self.t) / samplingTime + 1).astype(int) )
 			frame = np.zeros((dim[0], dim[1], dim[2], dim[3]))
 		return self.toSpikeTensor(frame, samplingTime).reshape(dim)
 
@@ -93,7 +94,7 @@ class event():
 
 		xEvent = np.round(self.x).astype(int)
 		pEvent = np.round(self.p).astype(int)
-		tEvent = np.round(self.t/samplingTime).astype(int) - tSt
+		tEvent = np.round(self.t / samplingTime).astype(int) - tSt
 
 		# print('shifted sequence by', tSt)
 
@@ -108,12 +109,12 @@ class event():
 				emptyTensor[pEvent[validInd],
 							0, 
 							xEvent[validInd],
-							tEvent[validInd]] = 1/samplingTime
+							tEvent[validInd]] = 1 / samplingTime
 			elif binningMode.upper() == 'SUM':
 				emptyTensor[pEvent[validInd],
 							0, 
 							xEvent[validInd],
-							tEvent[validInd]] += 1/samplingTime
+							tEvent[validInd]] += 1 / samplingTime
 			else:
 				raise Exception('Unsupported binningMode. It was {}'.format(binningMode))
 
@@ -132,12 +133,12 @@ class event():
 				emptyTensor[pEvent[validInd], 
 							yEvent[validInd],
 							xEvent[validInd],
-							tEvent[validInd]] = 1/samplingTime
+							tEvent[validInd]] = 1 / samplingTime
 			elif binningMode.upper() == 'SUM':
 				emptyTensor[pEvent[validInd], 
 							yEvent[validInd],
 							xEvent[validInd],
-							tEvent[validInd]] += 1/samplingTime
+							tEvent[validInd]] += 1 / samplingTime
 			else:
 				raise Exception('Unsupported binningMode. It was {}'.format(binningMode))
 			
@@ -159,16 +160,16 @@ def spikeArrayToEvent(spikeMat, samplingTime=1):
 	'''
 	if spikeMat.ndim == 3:
 		spikeEvent = np.argwhere(spikeMat > 0)
-		xEvent = spikeEvent[:,1]
+		xEvent = spikeEvent[:, 1]
 		yEvent = None
-		pEvent = spikeEvent[:,0]
-		tEvent = spikeEvent[:,2]
+		pEvent = spikeEvent[:, 0]
+		tEvent = spikeEvent[:, 2]
 	elif spikeMat.ndim == 4:
 		spikeEvent = np.argwhere(spikeMat > 0)
-		xEvent = spikeEvent[:,2]
-		yEvent = spikeEvent[:,1]
-		pEvent = spikeEvent[:,0]
-		tEvent = spikeEvent[:,3]
+		xEvent = spikeEvent[:, 2]
+		yEvent = spikeEvent[:, 1]
+		pEvent = spikeEvent[:, 0]
+		tEvent = spikeEvent[:, 3]
 	else:
 		raise Exception('Expected numpy array of 3 or 4 dimension. It was {}'.format(spikeMat.ndim))
 

@@ -44,7 +44,7 @@ class learningStat():
         >>> loss = trainingStat.loss()
         '''
         if self.numSamples > 0: 
-            return self.lossSum/self.numSamples 
+            return self.lossSum / self.numSamples 
         else:   
             return None
 
@@ -198,7 +198,7 @@ class learningStats():
         if header is not None:
             for h in header:
                 print('\033[2K'+str(h))
-                self.linesPrinted +=1
+                self.linesPrinted += 1
 
         print(epochStr + iterStr + profileStr)
         print(self.training.displayString())
